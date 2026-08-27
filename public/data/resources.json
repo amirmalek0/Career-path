@@ -550,8 +550,15 @@
       "description": "The prerequisite foundation for CPU and memory virtualization, concurrency, persistence, file systems, and security."
     }
   ],
-  "completedSessionIds": [],
-  "activity": {},
+  "completedSessionIds": [
+    "postgresql-14-internals-study-1"
+  ],
+  "activity": {
+    "2026-08-27": {
+      "minutes": 90,
+      "sessions": 1
+    }
+  },
   "calendarOverrides": {
     "postgresql-14-internals:2026-08-28": {
       "resourceId": "postgresql-14-internals",
