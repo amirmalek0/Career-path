@@ -551,13 +551,12 @@
     }
   ],
   "completedSessionIds": [
-    "postgresql-14-internals-study-1",
     "postgresql-14-internals-study-2"
   ],
   "activity": {
     "2026-08-27": {
-      "minutes": 90,
-      "sessions": 1
+      "minutes": 0,
+      "sessions": 0
     },
     "2026-08-29": {
       "minutes": 90,
