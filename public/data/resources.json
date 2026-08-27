@@ -7,7 +7,7 @@
       "author": "Egor Rogov",
       "category": "Database",
       "kind": "book",
-      "status": "active",
+      "status": "planned",
       "sourceUrl": "https://postgrespro.com/community/books/internals",
       "totalUnits": 548,
       "unitLabel": "pages",
@@ -68,7 +68,7 @@
       "author": "Henrietta Dombrovskaya, Boris Novikov & Anna Bailliekova",
       "category": "Database",
       "kind": "book",
-      "status": "planned",
+      "status": "active",
       "sourceUrl": "https://www.oreilly.com/library/view/postgresql-query-optimization/9798868800696/",
       "totalUnits": 360,
       "unitLabel": "pages",
@@ -78,7 +78,8 @@
       "sessionMinutes": 75,
       "estimatedHours": 50,
       "accent": "lavender",
-      "description": "Execution plans, indexing, query classes, data modification, configuration, and application performance."
+      "description": "Execution plans, indexing, query classes, data modification, configuration, and application performance.",
+      "startDate": "2026-08-27"
     },
     {
       "id": "database-internals",
