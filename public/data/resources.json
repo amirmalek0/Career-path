@@ -561,14 +561,5 @@
       "sessions": 0
     }
   },
-  "calendarOverrides": {
-    "postgresql-14-internals:2026-08-28": {
-      "resourceId": "postgresql-14-internals",
-      "date": "2026-08-28",
-      "mode": "practice",
-      "title": "Practice PostgreSQL 14 Internals concepts",
-      "detail": "Apply the concepts from the latest reading sessions, document findings, and note questions to revisit.",
-      "minutes": 90
-    }
-  }
+  "calendarOverrides": {}
 }
