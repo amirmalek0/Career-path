@@ -3,6 +3,17 @@ name: Deploy learning dashboard
 on:
   push:
     branches: [master]
+    paths:
+      - 'app/**'
+      - 'public/covers/**'
+      - 'public/favicon.svg'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.ts'
+      - 'tsconfig.json'
+      - 'eslint.config.mjs'
+      - 'vite.config.ts'
+      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
 permissions:

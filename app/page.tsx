@@ -110,6 +110,8 @@ const TODAY = '2026-08-27';
 const GITHUB_REPOSITORY = 'amirmalek0/Career-path';
 const GITHUB_BRANCH = 'master';
 const REPOSITORY_STATE_PATH = 'public/data/resources.json';
+const TOKEN_STORAGE_KEY = 'mastery.github-access-token';
+const GITHUB_API_VERSION = '2022-11-28';
 const RESOURCE_COVERS: Record<string, string> = {
   'postgresql-14-internals': 'covers/postgresql-14-internals.jpg',
   'postgresql-query-optimization': 'covers/postgresql-query-optimization.jpg',
@@ -146,6 +148,7 @@ const nextStudyDay = (date: Date) => {
 const formatDate = (value: string, options?: Intl.DateTimeFormatOptions) =>
   parseDate(value).toLocaleDateString('en-US', options ?? { month: 'short', day: 'numeric', year: 'numeric' });
 const calendarOverrideKey = (resourceId: string, date: string) => `${resourceId}:${date}`;
+const persistedGithubToken = () => typeof window === 'undefined' ? '' : window.localStorage.getItem(TOKEN_STORAGE_KEY)?.trim() ?? '';
 
 function topicForPage(resource: Resource, page: number) {
   return resource.chapters?.find((chapter) => page >= chapter.start && page <= chapter.end)?.title ?? `Study block ${Math.ceil(page / resource.unitsPerSession)}`;
@@ -239,10 +242,7 @@ function buildSchedule(resource?: Resource, overrides: CalendarOverrides = {}): 
   return sessions.sort((left, right) => left.date.localeCompare(right.date)).map((session, index) => ({ ...session, index: index + 1 }));
 }
 
-async function readState(): Promise<AppState> {
-  const response = await fetch('data/resources.json', { cache: 'no-store' });
-  if (!response.ok) throw new Error('Could not load repository state.');
-  const repositoryState = await response.json() as Partial<AppState> & { resources: Resource[] };
+function normalizeState(repositoryState: Partial<AppState> & { resources: Resource[] }): AppState {
   return {
     version: repositoryState.version ?? 3,
     resources: repositoryState.resources,
@@ -250,6 +250,39 @@ async function readState(): Promise<AppState> {
     activity: repositoryState.activity ?? {},
     calendarOverrides: repositoryState.calendarOverrides ?? {},
   };
+}
+
+function base64ToUtf8(value: string) {
+  const binary = atob(value.replace(/\s/g, ''));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+async function readState(token = ''): Promise<AppState> {
+  const response = await fetch(
+    `https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${encodeRepositoryPath(REPOSITORY_STATE_PATH)}?ref=${GITHUB_BRANCH}&t=${Date.now()}`,
+    {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'X-GitHub-Api-Version': GITHUB_API_VERSION,
+      },
+    },
+  );
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => null) as { message?: string } | null)?.message;
+    throw new Error(detail || 'Could not load the live project data.');
+  }
+  const file = await response.json() as { content?: string; encoding?: string };
+  if (!file.content || file.encoding !== 'base64') throw new Error('The project database response was invalid.');
+  return normalizeState(JSON.parse(base64ToUtf8(file.content)) as Partial<AppState> & { resources: Resource[] });
+}
+
+async function readBundledState(): Promise<AppState> {
+  const response = await fetch('data/resources.json', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Could not load the bundled project data.');
+  return normalizeState(await response.json() as Partial<AppState> & { resources: Resource[] });
 }
 
 const encodeRepositoryPath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
@@ -263,7 +296,8 @@ function bytesToBase64(bytes: Uint8Array) {
 
 async function repositoryFileSha(path: string, token: string) {
   const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${encodeRepositoryPath(path)}?ref=${GITHUB_BRANCH}`, {
-    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' },
+    cache: 'no-store',
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': GITHUB_API_VERSION },
   });
   if (response.status === 404) return undefined;
   if (!response.ok) throw new Error('Repository access was rejected. Check the token and Contents permission.');
@@ -274,7 +308,7 @@ async function putRepositoryFile(path: string, content: string, message: string,
   const sha = await repositoryFileSha(path, token);
   const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${encodeRepositoryPath(path)}`, {
     method: 'PUT',
-    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': GITHUB_API_VERSION },
     body: JSON.stringify({ message, content, branch: GITHUB_BRANCH, ...(sha ? { sha } : {}) }),
   });
   if (!response.ok) throw new Error((await response.json().catch(() => null) as { message?: string } | null)?.message || 'GitHub could not save the change.');
@@ -285,7 +319,7 @@ async function deleteRepositoryFile(path: string, token: string) {
   if (!sha) return;
   const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${encodeRepositoryPath(path)}`, {
     method: 'DELETE',
-    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': GITHUB_API_VERSION },
     body: JSON.stringify({ message: `Remove ${path.split('/').at(-1)}`, sha, branch: GITHUB_BRANCH }),
   });
   if (!response.ok) throw new Error('GitHub could not remove the file.');
@@ -332,18 +366,51 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [toast, setToast] = useState('');
   const [showRepositoryAccess, setShowRepositoryAccess] = useState(false);
-  const [githubToken, setGithubToken] = useState('');
-  const [syncStatus, setSyncStatus] = useState<'auth' | 'saving' | 'saved' | 'error'>('auth');
+  const [githubToken, setGithubToken] = useState(persistedGithubToken);
+  const [syncStatus, setSyncStatus] = useState<'auth' | 'saving' | 'saved' | 'error'>(() => persistedGithubToken() ? 'saving' : 'auth');
   const searchRef = useRef<HTMLInputElement>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const stateRef = useRef<AppState | null>(null);
+  const githubTokenRef = useRef(githubToken);
 
   useEffect(() => {
-    readState().then((loaded) => {
-      setState(loaded);
-    }).catch(() => {
-      setToast('Could not load the project data. Refresh to retry.');
-    });
-  }, []);
+    let cancelled = false;
+    const storedToken = githubTokenRef.current;
+
+    const load = async () => {
+      try {
+        const loaded = await readState(storedToken);
+        if (cancelled) return;
+        stateRef.current = loaded;
+        setState(loaded);
+        if (storedToken) setSyncStatus('saved');
+      } catch (error) {
+        try {
+          const loaded = storedToken ? await readState() : await readBundledState();
+          if (cancelled) return;
+          stateRef.current = loaded;
+          setState(loaded);
+          if (storedToken) {
+            setSyncStatus('error');
+            setToast('The saved token was rejected. Open GitHub connection to replace it.');
+          }
+        } catch {
+          try {
+            const loaded = await readBundledState();
+            if (cancelled) return;
+            stateRef.current = loaded;
+            setState(loaded);
+            setSyncStatus(storedToken ? 'error' : 'auth');
+            setToast(error instanceof Error ? error.message : 'Could not load the live project data.');
+          } catch {
+            if (!cancelled) setToast('Could not load the project data. Refresh to retry.');
+          }
+        }
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, []); // The stored credential is intentionally read only once on startup.
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -405,24 +472,27 @@ export default function Home() {
   const maxDailyMinutes = Math.max(90, ...last14Days.map((date) => state?.activity[date]?.minutes ?? 0));
 
   function updateState(mutator: (current: AppState) => AppState) {
-    setState((current) => {
-      if (!current) return current;
-      const next = mutator(current);
-      if (!githubToken) {
-        setSyncStatus('auth');
-        setShowRepositoryAccess(true);
-      } else {
-        setSyncStatus('saving');
-        saveQueueRef.current = saveQueueRef.current
-          .then(() => saveRepositoryState(next, githubToken))
-          .then(() => setSyncStatus('saved'))
-          .catch((error: Error) => {
-            setSyncStatus('error');
-            setToast(error.message || 'The project data could not be saved.');
-          });
-      }
-      return next;
-    });
+    const current = stateRef.current;
+    if (!current) return;
+    const next = mutator(current);
+    stateRef.current = next;
+    setState(next);
+
+    const token = githubTokenRef.current;
+    if (!token) {
+      setSyncStatus('auth');
+      setShowRepositoryAccess(true);
+      return;
+    }
+
+    setSyncStatus('saving');
+    saveQueueRef.current = saveQueueRef.current
+      .then(() => saveRepositoryState(next, token))
+      .then(() => setSyncStatus('saved'))
+      .catch((error: Error) => {
+        setSyncStatus('error');
+        setToast(error.message || 'The project data could not be saved.');
+      });
   }
 
   function activateResource(id: string) {
@@ -485,6 +555,8 @@ export default function Home() {
     setSyncStatus('saving');
     try {
       await saveRepositoryState(state, token);
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      githubTokenRef.current = token;
       setGithubToken(token);
       setSyncStatus('saved');
       setShowRepositoryAccess(false);
@@ -497,20 +569,21 @@ export default function Home() {
   }
 
   async function uploadPdfToRepository(file: File, resourceId: string) {
-    if (!githubToken) {
+    const token = githubTokenRef.current;
+    if (!token) {
       setShowRepositoryAccess(true);
       throw new Error('Connect GitHub before uploading a PDF.');
     }
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-');
     const repositoryPath = `public/uploads/${resourceId}/${safeName}`;
     const content = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
-    await putRepositoryFile(repositoryPath, content, `Upload PDF for ${resourceId}`, githubToken);
+    await putRepositoryFile(repositoryPath, content, `Upload PDF for ${resourceId}`, token);
     return `uploads/${resourceId}/${safeName}`;
   }
 
   function openResource(resource: Resource) {
     if (resource.filePath) {
-      window.open(resource.filePath, '_blank', 'noopener,noreferrer');
+      window.open(`https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_BRANCH}/public/${encodeRepositoryPath(resource.filePath)}`, '_blank', 'noopener,noreferrer');
     } else if (resource.textContent) {
       setPreviewText(resource);
     } else if (resource.sourceUrl) {
@@ -926,7 +999,7 @@ export default function Home() {
           <section className="modal repository-modal" role="dialog" aria-modal="true" aria-labelledby="repository-access-title">
             <button className="modal-close" onClick={() => setShowRepositoryAccess(false)} aria-label="Close"><X size={18} /></button>
             <p className="section-kicker">Project persistence</p><h2 id="repository-access-title">Connect the GitHub project</h2>
-            {githubToken ? <><div className="repository-connected"><Check size={18} /><div><strong>Connected for this session</strong><p>Every change is committed to {GITHUB_REPOSITORY}. The token is held only in memory and disappears when this tab closes.</p></div></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => { setGithubToken(''); setSyncStatus('auth'); }}>Disconnect</button><button type="button" className="primary-button" onClick={() => setShowRepositoryAccess(false)}>Done</button></div></> : <form onSubmit={connectRepository}><p className="modal-intro">Use a fine-grained GitHub token with Contents: Read and write access to {GITHUB_REPOSITORY}. The dashboard never saves this token in browser storage.</p><label><span>Fine-grained access token</span><input name="token" type="password" required autoComplete="off" placeholder="github_pat_…" /></label><a className="token-help" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">Create a fine-grained token <ExternalLink size={13} /></a><div className="repository-note"><GitBranch size={17} /><p>The project JSON, progress, calendar changes, and uploaded PDFs are the source of truth. Each save creates a project commit and triggers deployment.</p></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowRepositoryAccess(false)}>Cancel</button><button type="submit" className="primary-button"><GitBranch size={16} />Connect &amp; save</button></div></form>}
+            {githubToken ? <><div className="repository-connected"><Check size={18} /><div><strong>Connected on this device</strong><p>Every data change is written to {GITHUB_REPOSITORY}. The token stays in this browser until you disconnect or clear browser data.</p></div></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => { window.localStorage.removeItem(TOKEN_STORAGE_KEY); githubTokenRef.current = ''; setGithubToken(''); setSyncStatus('auth'); }}>Disconnect &amp; forget token</button><button type="button" className="primary-button" onClick={() => setShowRepositoryAccess(false)}>Done</button></div></> : <form onSubmit={connectRepository}><p className="modal-intro">Use a fine-grained GitHub token with Contents: Read and write access to {GITHUB_REPOSITORY}. It will be saved in this browser so future visits reconnect automatically.</p><label><span>Fine-grained access token</span><input name="token" type="password" required autoComplete="off" placeholder="github_pat_…" /></label><a className="token-help" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">Create a fine-grained token <ExternalLink size={13} /></a><div className="repository-note"><GitBranch size={17} /><p>Progress, resource edits, calendar changes, and uploaded PDFs update the project database immediately. Only code changes trigger a site deployment.</p></div><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowRepositoryAccess(false)}>Cancel</button><button type="submit" className="primary-button"><GitBranch size={16} />Connect &amp; save</button></div></form>}
           </section>
         </div>
       )}
