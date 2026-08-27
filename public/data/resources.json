@@ -20,14 +20,46 @@
       "accent": "green",
       "description": "A deep dive into PostgreSQL MVCC, WAL, locks, query execution, and index internals.",
       "chapters": [
-        { "start": 1, "end": 19, "title": "About the book" },
-        { "start": 20, "end": 36, "title": "Introduction & data organization" },
-        { "start": 37, "end": 144, "title": "Isolation & MVCC" },
-        { "start": 145, "end": 196, "title": "Buffer cache & WAL" },
-        { "start": 197, "end": 248, "title": "Locks" },
-        { "start": 249, "end": 408, "title": "Query execution" },
-        { "start": 409, "end": 539, "title": "Index types" },
-        { "start": 540, "end": 548, "title": "Conclusion & index" }
+        {
+          "start": 1,
+          "end": 19,
+          "title": "About the book"
+        },
+        {
+          "start": 20,
+          "end": 36,
+          "title": "Introduction & data organization"
+        },
+        {
+          "start": 37,
+          "end": 144,
+          "title": "Isolation & MVCC"
+        },
+        {
+          "start": 145,
+          "end": 196,
+          "title": "Buffer cache & WAL"
+        },
+        {
+          "start": 197,
+          "end": 248,
+          "title": "Locks"
+        },
+        {
+          "start": 249,
+          "end": 408,
+          "title": "Query execution"
+        },
+        {
+          "start": 409,
+          "end": 539,
+          "title": "Index types"
+        },
+        {
+          "start": 540,
+          "end": 548,
+          "title": "Conclusion & index"
+        }
       ]
     },
     {
@@ -518,7 +550,14 @@
       "description": "The prerequisite foundation for CPU and memory virtualization, concurrency, persistence, file systems, and security."
     }
   ],
-  "completedSessionIds": [],
-  "activity": {},
+  "completedSessionIds": [
+    "postgresql-14-internals-study-1"
+  ],
+  "activity": {
+    "2026-08-27": {
+      "minutes": 90,
+      "sessions": 1
+    }
+  },
   "calendarOverrides": {}
 }
